@@ -5,6 +5,7 @@ import androidx.core.content.ContextCompat;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.util.Log;
@@ -16,12 +17,22 @@ import org.opencv.android.BaseLoaderCallback;
 import org.opencv.android.CameraBridgeViewBase;
 import org.opencv.android.LoaderCallbackInterface;
 import org.opencv.android.OpenCVLoader;
+import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfRect;
 import org.opencv.core.Point;
+import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
+import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
+import org.opencv.objdetect.CascadeClassifier;
+import org.opencv.objdetect.Objdetect;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.List;
 
@@ -33,6 +44,9 @@ public class CameraActivity extends Activity implements CameraBridgeViewBase.CvC
     private Mat mGray;
 
     private CameraBridgeViewBase mOpenCvCameraView;
+
+    private CascadeClassifier cascadeClassifierFace;
+    private CascadeClassifier cascadeClassifierEye;
 
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
         @Override
@@ -78,6 +92,47 @@ public class CameraActivity extends Activity implements CameraBridgeViewBase.CvC
         mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.frame_camera);
         mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
         mOpenCvCameraView.setCvCameraViewListener(this);
+
+        // load model for face detection
+        try {
+            InputStream is = getResources().openRawResource(R.raw.haarcascade_frontalface_alt);
+            File cascadeDir = getDir("cascade", Context.MODE_PRIVATE); // creating a folder
+            File mCascadeFileFace = new File(cascadeDir, "haarcascade_frontalface_alt.xml"); // creating file in that folder
+            FileOutputStream os = new FileOutputStream(mCascadeFileFace);
+
+            byte[] buffer = new byte[4096];
+            int byteRead;
+
+            // writing that file from raw folder
+            while ((byteRead = is.read(buffer)) != -1) {
+                os.write(buffer, 0, byteRead);
+            }
+
+            is.close();
+            os.close();
+
+            // loading file from cascade folder above
+            cascadeClassifierFace = new CascadeClassifier(mCascadeFileFace.getAbsolutePath());
+
+            InputStream is2 = getResources().openRawResource(R.raw.haarcascade_eye);
+            File mCascadeFileEye = new File(cascadeDir, "haarcascade_eye.xml"); // creating file in that folder
+            FileOutputStream os2 = new FileOutputStream(mCascadeFileEye);
+
+            byte[] buffer2 = new byte[4096];
+            int byteRead2;
+
+            while ((byteRead2 = is2.read(buffer2)) != -1) {
+                os2.write(buffer2, 0, byteRead2);
+            }
+
+            is2.close();
+            os2.close();
+
+            cascadeClassifierEye = new CascadeClassifier(mCascadeFileEye.getAbsolutePath());
+
+        } catch (IOException e) {
+            Log.i(TAG, "Cascade file not found!");
+        }
     }
 
     @Override
@@ -127,6 +182,103 @@ public class CameraActivity extends Activity implements CameraBridgeViewBase.CvC
         mRgba = inputFrame.rgba();
         mGray = inputFrame.gray();
 
+        // ------------ Face/eye detection --------------
+        mRgba = CascadeRec(mRgba);
+
+         return mRgba;
+        // return mGray;
+        // return edges;
+    }
+
+    private Mat CascadeRec(Mat mRgba) {
+        // original frame was rotated -90 deg, need to rotate again for model
+        Core.flip(mRgba.t(), mRgba, 1);
+        // convert into RGB
+        Mat mRgb = new Mat();
+        Imgproc.cvtColor(mRgba, mRgb, Imgproc.COLOR_RGBA2RGB);
+
+        int height = mRgb.height();
+        // minimum size of face in frame
+        int absoluteFaceSize = (int) (height * 0.1);
+
+        MatOfRect faces = new MatOfRect();
+        if (cascadeClassifierFace != null) {
+                                            // input, output,                                       min size of output
+            cascadeClassifierFace.detectMultiScale(mRgb, faces, 1.1, 2, 2, new Size(absoluteFaceSize, absoluteFaceSize), new Size());
+        }
+
+        // loop through all faces
+        Rect[] facesArray = faces.toArray();
+
+        for (int i = 0; i < facesArray.length; i++) {
+            // draw face on original frame mRgba
+            Imgproc.rectangle(mRgba, facesArray[i].tl(), facesArray[i].br(), new Scalar(0, 255, 0, 255), 2);
+
+            // For eyes, loop through all detected faces
+            // crop face image and pass it through eye classifier
+
+            // https://answers.opencv.org/question/203268/mat-out-of-bounds/
+            Rect r = facesArray[i];
+            r.x = Math.max(r.x,0);
+            r.y = Math.max(r.y,0);
+            r.width = Math.min(mRgba.cols()-1-r.x, r.width);
+            r.height = Math.min(mRgba.rows()-1-r.y, r.height);
+            Mat cropped_face = new Mat(mRgba,r); // now you can crop it safely !
+
+            // starting point, width, height of crop
+            Rect roi = new Rect((int)facesArray[i].tl().x, (int)facesArray[i].br().y,
+                    (int)facesArray[i].br().x - (int)facesArray[i].tl().x,
+                    (int)facesArray[i].br().y - (int)facesArray[i].tl().y);
+
+            // cropped image matrix
+            Mat cropped = new Mat(mRgba, roi);
+
+
+            // array to store eye coords, have to pass MatOfRect to classifier
+            MatOfRect eyes = new MatOfRect();
+
+            if (cascadeClassifierEye != null) {
+                // find biggest - find biggest size object (eye)
+                cascadeClassifierEye.detectMultiScale(cropped, eyes, 1.15, 2,
+                        Objdetect.CASCADE_FIND_BIGGEST_OBJECT | Objdetect.CASCADE_SCALE_IMAGE,
+                        // minimum size of eye
+                        new Size(35, 35), new Size());
+
+                // now create an array
+                Rect[] eyesCoords = eyes.toArray();
+
+                // loop through each eye and draw it out
+                for (int j = 0; j < eyesCoords.length; j++) {
+                    // find coords on original frame mRgba
+                    // starting coords
+                    int x1 = (int)(eyesCoords[j].tl().x + facesArray[i].tl().x);
+                    int y1 = (int)(eyesCoords[j].tl().y + facesArray[i].tl().y);
+                    // width and height
+                    int w1 = (int)(eyesCoords[j].tl().x - eyesCoords[j].tl().x);
+                    int h1 = (int)(eyesCoords[j].tl().y - eyesCoords[j].tl().y);
+                    // ending coords
+                    int x2 = (int)(x1 + x1);
+                    int y2 = (int)(y1 + h1);
+
+                    Imgproc.rectangle(mRgba, new Point(x1, y1), new Point(x2, y2), new Scalar(0, 255, 0), 2);
+
+                }
+
+            }
+
+        }
+
+        // rotate back to -90deg
+        Core.flip(mRgba.t(), mRgba, 0);
+
+
+
+        return mRgba;
+    }
+}
+
+
+
 //         Convert rgba to gray
 //                        (input, output, action)
 //         Imgproc.cvtColor(mRgba, mRgba, Imgproc.COLOR_RGBA2GRAY);
@@ -168,11 +320,4 @@ public class CameraActivity extends Activity implements CameraBridgeViewBase.CvC
 //            //            draw on, start, end, color, thickness
 //            Imgproc.line(mRgba, p1, p2, new Scalar(255.0, 255.0, 255.0), 1, Imgproc.LINE_AA, 0);
 //        }
-//        // ------------- Line detection ------------------
-
-
-         return mRgba;
-        // return mGray;
-        // return edges;
-    }
-}
+//        // ------------- Line detection -----------------
