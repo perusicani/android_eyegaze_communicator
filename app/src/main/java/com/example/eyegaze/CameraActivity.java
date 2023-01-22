@@ -192,7 +192,11 @@ public class CameraActivity extends Activity implements CameraBridgeViewBase.CvC
 
     private Mat CascadeRec(Mat mRgba) {
         // original frame was rotated -90 deg, need to rotate again for model
-        Core.flip(mRgba.t(), mRgba, 1);
+        // Mat a=mRgba.t();
+        //Core.flip(a,mRgba,1);
+        // a.release();
+         Core.flip(mRgba.t(), mRgba, 1);
+
         // convert into RGB
         Mat mRgb = new Mat();
         Imgproc.cvtColor(mRgba, mRgb, Imgproc.COLOR_RGBA2RGB);
@@ -218,50 +222,62 @@ public class CameraActivity extends Activity implements CameraBridgeViewBase.CvC
             // crop face image and pass it through eye classifier
 
             // https://answers.opencv.org/question/203268/mat-out-of-bounds/
-            Rect r = facesArray[i];
-            r.x = Math.max(r.x,0);
-            r.y = Math.max(r.y,0);
-            r.width = Math.min(mRgba.cols()-1-r.x, r.width);
-            r.height = Math.min(mRgba.rows()-1-r.y, r.height);
-            Mat cropped_face = new Mat(mRgba,r); // now you can crop it safely !
+//            Rect r = facesArray[i];
+//            r.x = Math.max(r.x,0);
+//            r.y = Math.max(r.y,0);
+//            r.width = Math.min(mRgba.cols()-1-r.x, r.width);
+//            r.height = Math.min(mRgba.rows()-1-r.y, r.height);
+//            Mat cropped_face = new Mat(mRgba,r); // now you can crop it safely !
 
             // starting point, width, height of crop
-            Rect roi = new Rect((int)facesArray[i].tl().x, (int)facesArray[i].br().y,
-                    (int)facesArray[i].br().x - (int)facesArray[i].tl().x,
-                    (int)facesArray[i].br().y - (int)facesArray[i].tl().y);
+            Rect roi=new Rect(
+                    (int)facesArray[i].tl().x, (int)facesArray[i].tl().y,
+                    (int)facesArray[i].br().x-(int)facesArray[i].tl().x,
+                    (int)facesArray[i].br().y-(int)facesArray[i].tl().y
+            );
 
             // cropped image matrix
+            // Mat cropped = new Mat(cropped_face, roi);
             Mat cropped = new Mat(mRgba, roi);
-
 
             // array to store eye coords, have to pass MatOfRect to classifier
             MatOfRect eyes = new MatOfRect();
 
             if (cascadeClassifierEye != null) {
-                // find biggest - find biggest size object (eye)
-                cascadeClassifierEye.detectMultiScale(cropped, eyes, 1.15, 2,
-                        Objdetect.CASCADE_FIND_BIGGEST_OBJECT | Objdetect.CASCADE_SCALE_IMAGE,
-                        // minimum size of eye
-                        new Size(35, 35), new Size());
+                // find biggest size object (eye)
+//                cascadeClassifierEye.detectMultiScale(cropped, eyes, 1.15, 2,
+//                        Objdetect.CASCADE_FIND_BIGGEST_OBJECT | Objdetect.CASCADE_SCALE_IMAGE,
+//                        // minimum size of eye
+//                        new Size(35, 35), new Size());
+
+                cascadeClassifierEye.detectMultiScale(
+                        cropped,
+                        eyes,
+                        1.15,
+                        2,
+                        2,
+                        new Size(35,35),
+                        new Size()
+                );
 
                 // now create an array
                 Rect[] eyesCoords = eyes.toArray();
 
                 // loop through each eye and draw it out
                 for (int j = 0; j < eyesCoords.length; j++) {
-                    // find coords on original frame mRgba
-                    // starting coords
+                    // find coordinate on original frame mRgba
+                    // starting point
                     int x1 = (int)(eyesCoords[j].tl().x + facesArray[i].tl().x);
                     int y1 = (int)(eyesCoords[j].tl().y + facesArray[i].tl().y);
                     // width and height
-                    int w1 = (int)(eyesCoords[j].tl().x - eyesCoords[j].tl().x);
-                    int h1 = (int)(eyesCoords[j].tl().y - eyesCoords[j].tl().y);
-                    // ending coords
-                    int x2 = (int)(x1 + x1);
-                    int y2 = (int)(y1 + h1);
-
-                    Imgproc.rectangle(mRgba, new Point(x1, y1), new Point(x2, y2), new Scalar(0, 255, 0), 2);
-
+                    int w1 = (int)(eyesCoords[j].br().x - eyesCoords[j].tl().x);
+                    int h1 = (int)(eyesCoords[j].br().y - eyesCoords[j].tl().y);
+                    // end point
+                    int x2 = (int)(w1 + x1);
+                    int y2 = (int)(h1 + y1);
+                    // draw eye on original frame mRgba
+                    //input    starting point   ending point   color                 thickness
+                    Imgproc.rectangle(mRgba, new Point(x1,y1), new Point(x2,y2), new Scalar(0,255,0,255), 2);
                 }
 
             }
@@ -269,9 +285,10 @@ public class CameraActivity extends Activity implements CameraBridgeViewBase.CvC
         }
 
         // rotate back to -90deg
+//        Mat b=mRgba.t();
+//        Core.flip(a,mRgba,0);
+//        b.release();
         Core.flip(mRgba.t(), mRgba, 0);
-
-
 
         return mRgba;
     }
