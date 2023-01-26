@@ -154,3 +154,48 @@ public class HaarFaceDetection {
 
     }
 }
+
+
+
+//         Convert rgba to gray
+//                        (input, output, action)
+//         Imgproc.cvtColor(mRgba, mRgba, Imgproc.COLOR_RGBA2GRAY);
+
+//        // ------------- Line detection ------------------
+//        // Edges first
+//        Mat edges = new Mat();
+//        Imgproc.Canny(mRgba, edges, 80, 200);
+//        // Then lines
+//        Mat lines = new Mat();
+//        // Starting and ending point of lines
+//        Point p1 = new Point();
+//        Point p2 = new Point();
+//        double a, b;
+//        double x0, y0;
+//
+//        Imgproc.HoughLines(edges, lines, 1.0, Math.PI / 180.0, 140);
+//
+//        // Loop through each line
+//        for (int i = 0; i < lines.rows(); i++) {
+//            double[] vec = lines.get(i, 0);
+//            double rho = vec[0];
+//            double theta = vec[1];
+//
+//            //
+//            a = Math.cos(theta);
+//            b = Math.sin(theta);
+//
+//            x0 = a * rho;
+//            y0 = b * rho;
+//
+//            // Starting point and ending point.
+//            p1.x = Math.round(x0 + 1000 * (-b));
+//            p1.y = Math.round(y0 + 1000 * a);
+//            p2.x = Math.round(x0 - 1000 * (-b));
+//            p2.y = Math.round(y0 - 1000 * a);
+//
+//            // Draw line on original frame
+//            //            draw on, start, end, color, thickness
+//            Imgproc.line(mRgba, p1, p2, new Scalar(255.0, 255.0, 255.0), 1, Imgproc.LINE_AA, 0);
+//        }
+//        // ------------- Line detection -----------------
